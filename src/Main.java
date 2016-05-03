@@ -5,6 +5,7 @@ import spark.template.mustache.MustacheTemplateEngine;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.regex.*;
 
 /**
  * Created by johnjastrow on 4/15/16.
@@ -12,6 +13,20 @@ import java.util.HashMap;
 public class Main {
     static HashMap<String, User> users = new HashMap<>();
     static ArrayList<Message> messages = new ArrayList<>();
+
+    static Message findMessage(String keyword){
+        Message message = null;
+        Pattern p = Pattern.compile(keyword);
+
+        for(Message m : messages){
+            Matcher matcher = p.matcher(m.text);
+            if(matcher.find()){
+                message = m;
+            }
+        }
+
+        return message;
+    }
 
     public static void main(String[] args) {
         addTestUsers();
@@ -38,12 +53,57 @@ public class Main {
 
                     Session session = request.session();
                     String userName = session.attribute("userName");
+                    String searchResult = session.attribute("searchResult");
 
                     m.put("messages", threads);
                     m.put("userName", userName);
+                    m.put("replyId", replyIdNum);
+                    m.put("searchResult", searchResult);
                     return new ModelAndView(m, "home.html");
                 },
                 new MustacheTemplateEngine()
+        );
+
+        Spark.post(
+                "/find-message",
+                (request, response) -> {
+                    String keyword = request.queryParams("keyword");
+
+                    if(keyword == null){
+                        throw new Exception("Keyword is null");
+                    }
+
+                    Message result = findMessage(keyword);
+                    Session s = request.session();
+                    s.attribute("searchResult", result.text);
+
+                    response.redirect("/");
+                    return "";
+                }
+        );
+
+        Spark.post(
+                "/create-message",
+                (request, response) -> {
+                    String text = request.queryParams("messageText");
+                    Session s = request.session();
+                    String username = s.attribute("userName");
+                    Integer replyID = Integer.parseInt(request.queryParams("replyId"));
+                    if(username == null){
+                        throw new Exception("Username is null");
+                    }
+
+                    if (text == null){
+                        throw new Exception("Text is null");
+                    }
+
+                    Message m = new Message(messages.size(), replyID, username, text);
+                    messages.add(m);
+
+                    // Go back to origin
+                    response.redirect(request.headers("Referer"));
+                    return "";
+                }
         );
 
         Spark.post(
